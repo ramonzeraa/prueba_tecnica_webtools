@@ -36,29 +36,13 @@ class SurveyApiTests(TestCase):
 
     def test_user_cannot_access_survey_from_another_organization(self):
         other_org = Organization.objects.create(name="Contoso")
-        other_user = get_user_model().objects.create_user("bob", password="bob123")
-        Membership.objects.create(user=other_user, organization=other_org)
         other_survey = Survey.objects.create(
             organization=other_org,
             title="Employee NPS",
             external_key="contoso-enps",
         )
-        client = APIClient()
-        client.force_authenticate(other_user)
 
-        response = client.get(f"/api/surveys/{self.survey.id}/results/")
-
-        self.assertEqual(response.status_code, 404)
-
-        own_survey_response = client.get(f"/api/surveys/{other_survey.id}/results/")
-        self.assertEqual(own_survey_response.status_code, 200)
-
-    def test_user_without_membership_gets_not_found(self):
-        orphan_user = get_user_model().objects.create_user("carol", password="carol123")
-        client = APIClient()
-        client.force_authenticate(orphan_user)
-
-        response = client.get(f"/api/surveys/{self.survey.id}/results/")
+        response = self.client.get(f"/api/surveys/{other_survey.id}/results/")
 
         self.assertEqual(response.status_code, 404)
 

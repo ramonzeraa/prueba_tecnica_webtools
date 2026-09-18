@@ -18,12 +18,8 @@ class Command(BaseCommand):
         ana, _ = user_model.objects.get_or_create(username="ana")
         ana.set_password("ana123")
         ana.save()
-        bob, _ = user_model.objects.get_or_create(username="bob")
-        bob.set_password("bob123")
-        bob.save()
 
         Membership.objects.get_or_create(user=ana, organization=northwind)
-        Membership.objects.get_or_create(user=bob, organization=contoso)
 
         survey, _ = Survey.objects.get_or_create(
             external_key="northwind-csat",

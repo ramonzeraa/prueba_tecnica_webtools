@@ -4,18 +4,18 @@ Status: `PENDENTE` | `EM ANDAMENTO` | `RESOLVIDO`
 
 ---
 
-## Tarefa 1 — Isolamento entre empresas
+## 1. Problema de aislamiento
 
 **Status:** RESOLVIDO (`backend/surveys/models.py`, `backend/surveys/views.py`, `backend/surveys/tests.py`)
 
-**Local:** `backend/surveys/views.py:11-24` (`SurveyResultsView.get`)
+**Local:** `backend/surveys/views.py` (`SurveyResultsView.get`)
 
 **Problema confirmado:**
 ```python
 survey = get_object_or_404(Survey, pk=survey_id)
 responses = Response.objects.filter(survey=survey)
 ```
-Busca a survey só pelo `pk`. Não existe nenhuma checagem de que `request.user` tem `Membership` na `Organization` dona da survey. Qualquer usuário autenticado (`ana`, `bob`, etc.) consegue ler resultados de qualquer organização só incrementando o `survey_id` na URL. Confirmado com os dados de seed: `ana` → Northwind, `bob` → Contoso, e ambas surveys existem (ids 1 e 2).
+Busca a survey só pelo `pk`. Não existe nenhuma checagem de que `request.user` tem `Membership` na `Organization` dona da survey. Qualquer usuário autenticado consegue ler resultados de qualquer organização só incrementando o `survey_id` na URL.
 
 **Impacto:** vazamento de dados entre tenants — o tipo de bug mais grave possível num SaaS multiempresa.
 
@@ -27,20 +27,37 @@ Busca a survey só pelo `pk`. Não existe nenhuma checagem de que `request.user`
 | B | `permission_classes` customizada (`has_object_permission`) checando membership | Idiomático DRF, plugável em outras views futuras | Mais uma camada de indireção para um único endpoint |
 | C | Manager/queryset helper (`Survey.objects.for_user(user)`) centralizando o scoping | Reutilizável — útil se amanhã surgirem mais endpoints multi-tenant | Requer tocar em `models.py` |
 
-**Recomendação:** A + C combinados. Cria um método simples no manager (`for_user`) usado pela view via `get_object_or_404(Survey.objects.for_user(request.user), pk=survey_id)`. Resolve o bug de forma correta, não vaza existência da survey via status code, e fica pronto para reuso se a API crescer — dado que o teste é explicitamente sobre um "SaaS multiempresa".
+**Recomendação:** A + C combinados. `SurveyQuerySet.for_user(user)` usado pela view via `get_object_or_404(Survey.objects.for_user(request.user), pk=survey_id)`. Resolve o bug de forma correta, não vaza existência da survey via status code, e fica pronto para reuso se a API crescer.
 
-**Testes a adicionar:**
-- usuário de uma org não acessa survey de outra org (404 esperado).
-- usuário autorizado continua acessando normalmente (comportamento atual preservado).
-- usuário sem nenhuma membership (edge case).
+**Implementação:**
+- `backend/surveys/models.py`: `SurveyQuerySet.for_user(user)` filtrando por `organization__memberships__user=user`; `Survey.objects = SurveyQuerySet.as_manager()`.
+- `backend/surveys/views.py`: `get_object_or_404(Survey.objects.for_user(request.user), pk=survey_id)`.
+
+**Testes (`backend/surveys/tests.py`):**
+- `test_authorized_user_can_list_results` (já existia) — comportamento correto preservado.
+- `test_user_cannot_access_survey_from_another_organization` (novo) — cria uma organização/survey à qual `ana` não pertence e confirma `404`. Não depende de um segundo usuário logado: o isolamento é testado com a única credencial oficial do enunciado (`ana`/`ana123`).
+
+3/3 testes passando.
+
+**Verificação manual (servidor local, porta 8080 — a 8000 estava em uso):**
+
+```powershell
+curl.exe -u ana:ana123 http://127.0.0.1:8080/api/surveys/1/results/   # survey da própria org (Northwind)
+curl.exe -u ana:ana123 http://127.0.0.1:8080/api/surveys/2/results/   # survey de outra org (Contoso, seed_demo cria mas sem membership pra ana)
+```
+
+| Requisição | Esperado | Obtido |
+|---|---|---|
+| `ana` → survey 1 (própria) | 200 | 200, `count: 3` ✅ |
+| `ana` → survey 2 (outra org) | 404 | 404 `"No Survey matches the given query."` ✅ |
 
 ---
 
-## Tarefa 2 — Respostas duplicadas no webhook
+## 2. Evitar respuestas duplicadas
 
 **Status:** PENDENTE
 
-**Local:** `backend/surveys/views.py:27-48` (`ResponseWebhookView.post`), `backend/surveys/models.py:37-51` (`Response`)
+**Local:** `backend/surveys/views.py` (`ResponseWebhookView.post`), `backend/surveys/models.py` (`Response`)
 
 **Problema confirmado:**
 ```python
@@ -71,11 +88,11 @@ Cria uma `Response` nova a cada chamada, sem checar se já existe uma com o mesm
 
 ---
 
-## Tarefa 3 — Filtro de datas nos resultados
+## 3. Añadir filtro de fechas
 
 **Status:** PENDENTE
 
-**Local:** `backend/surveys/views.py:11-24` (backend, ausente) e `frontend/src/App.vue` (frontend, ausente)
+**Local:** `backend/surveys/views.py` (backend, ausente) e `frontend/src/App.vue` (frontend, ausente)
 
 **Problema confirmado:** não existe nenhum tratamento de query params na view (`request.query_params` nunca é lido) e o `App.vue` não tem nenhum input de data — só carrega `surveyId = 1` fixo, sem filtros.
 
@@ -87,7 +104,7 @@ Cria uma `Response` nova a cada chamada, sem checar se já existe uma com o mesm
 | B | `django-filter` com `DateFromToRangeFilter` | Idiomático DRF, menos código | Adiciona dependência nova ao `requirements.txt` |
 | C | Serializer DRF dedicado para validar `from`/`to` (mesmo padrão já usado em `WebhookSerializer`) | Consistente com o estilo já existente no projeto, erros de validação formatados automaticamente pelo DRF | Mais um serializer pequeno |
 
-**Recomendação:** C — mantém o mesmo padrão do código existente (serializers para validação de entrada), não adiciona dependência, e already segue a convenção do repositório.
+**Recomendação:** C — mantém o mesmo padrão do código existente (serializers para validação de entrada), não adiciona dependência, e segue a convenção do repositório.
 
 **Alternativas (frontend):** dois `<input type="date">` com `v-model`, disparando `loadResults()` ao mudar (ou botão "Aplicar"). Validação client-side de `from > to` antes de chamar a API, complementando o 400 que o backend deve retornar nesse caso.
 
@@ -101,3 +118,32 @@ Cria uma `Response` nova a cada chamada, sem checar se já existe uma com o mesm
 - data inválida retorna 400.
 - `from > to` retorna 400 (ou comportamento definido).
 - filtro combinado com o isolamento por organização da Tarefa 1.
+
+---
+
+## Extra — achados fora das 3 obrigações imediatas
+
+> Não fazem parte do escopo das 3 tarefas acima. Registrados aqui, resolvidos por último (se sobrar tempo), depois que as 3 obrigações imediatas estiverem prontas.
+
+### E1. `TemplateDoesNotExist` na Browsable API do DRF
+
+**Status:** PENDENTE (fica pra depois das 3 tarefas)
+
+Acessar qualquer endpoint da API direto pelo navegador (`Accept: text/html`) quebra com `500 TemplateDoesNotExist`, porque `TEMPLATES = []` em `backend/config/settings.py`, mas o DRF usa `BrowsableAPIRenderer` por padrão (não há `DEFAULT_RENDERER_CLASSES` configurado restringindo pra só JSON). Achado ao testar visualmente a Tarefa 1 no browser. Não afeta o front (que já manda `Accept: application/json` implícito via `fetch`) nem os testes automatizados/curl — só quebra quando alguém abre a URL da API direto no navegador.
+
+**Correção (quando formos nessa, sem alternativas — é um ajuste direto):** em `REST_FRAMEWORK` no `settings.py`, adicionar `"DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]`, removendo o `BrowsableAPIRenderer` da lista padrão. Não precisa mexer em `TEMPLATES`.
+
+### E2. Estrutura de git (histórico do repositório)
+
+**Status:** RESOLVIDO — repo único criado na raiz, publicado em https://github.com/ramonzeraa/prueba_tecnica_webtools (branch `main`, história consolidada em 1 commit por decisão do usuário).
+
+### E3. `AI_NOTES.md`
+
+**Status:** PENDENTE — entregável obrigatório do enunciado (não é um "problema", é um documento que falta escrever no fechamento).
+
+### E4. Itens de baixa prioridade, sem ação planejada
+
+- `frontend/src/App.vue`: `surveyId` fixo em `1`, sem seletor/rota.
+- `SurveyResultsView`: sem paginação.
+- `WEBHOOK_TOKEN`: comparação de string não é constant-time (timing attack teórico).
+- `SECRET_KEY`/`WEBHOOK_TOKEN`/senha `ana123` hardcoded: são os valores de demo do próprio scaffold, documentado como risco conhecido (não real) em `SOLUTION.md`.
