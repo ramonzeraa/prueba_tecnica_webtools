@@ -6,12 +6,22 @@ const surveyId = 1;
 const data = ref(null);
 const loading = ref(false);
 const error = ref("");
+const fromDate = ref("");
+const toDate = ref("");
 
 async function loadResults() {
+  if (fromDate.value && toDate.value && fromDate.value > toDate.value) {
+    error.value = "La fecha 'desde' no puede ser posterior a 'hasta'.";
+    return;
+  }
+
   loading.value = true;
   error.value = "";
   try {
-    data.value = await getSurveyResults(surveyId);
+    data.value = await getSurveyResults(surveyId, {
+      from: fromDate.value,
+      to: toDate.value,
+    });
   } catch (exception) {
     error.value = exception.message;
   } finally {
@@ -25,6 +35,18 @@ onMounted(loadResults);
 <template>
   <main>
     <h1>{{ data?.survey?.title || "Survey results" }}</h1>
+
+    <div class="filters">
+      <label>
+        Desde
+        <input type="date" v-model="fromDate" />
+      </label>
+      <label>
+        Hasta
+        <input type="date" v-model="toDate" />
+      </label>
+      <button @click="loadResults" :disabled="loading">Aplicar filtro</button>
+    </div>
 
     <p v-if="loading">Loading...</p>
     <p v-else-if="error" class="error">{{ error }}</p>
@@ -84,5 +106,33 @@ td {
 
 .error {
   color: #b91c1c;
+}
+
+.filters {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.filters button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #1f2937;
+  color: white;
+  cursor: pointer;
+}
+
+.filters button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 </style>

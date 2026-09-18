@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from django.db import IntegrityError, transaction
 
 from .models import Response, Survey
-from .serializers import ResponseSerializer, WebhookSerializer
+from .serializers import DateRangeFilterSerializer, ResponseSerializer, WebhookSerializer
 
 
 class SurveyResultsView(APIView):
@@ -15,7 +15,22 @@ class SurveyResultsView(APIView):
 
     def get(self, request, survey_id):
         survey = get_object_or_404(Survey.objects.for_user(request.user), pk=survey_id)
+
+        filters = DateRangeFilterSerializer(
+            data={
+                "date_from": request.query_params.get("from"),
+                "date_to": request.query_params.get("to"),
+            }
+        )
+        filters.is_valid(raise_exception=True)
+        date_from = filters.validated_data.get("date_from")
+        date_to = filters.validated_data.get("date_to")
+
         responses = Response.objects.filter(survey=survey)
+        if date_from:
+            responses = responses.filter(submitted_at__date__gte=date_from)
+        if date_to:
+            responses = responses.filter(submitted_at__date__lte=date_to)
 
         return ApiResponse(
             {

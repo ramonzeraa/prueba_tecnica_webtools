@@ -124,3 +124,58 @@ class SurveyApiTests(TestCase):
             2,
         )
 
+    def test_filter_by_from_date_only(self):
+        Response.objects.create(
+            survey=self.survey,
+            external_id="evt-old",
+            status="complete",
+            answers={},
+            submitted_at=timezone.now() - timedelta(days=30),
+        )
+        cutoff = (timezone.now() - timedelta(days=5)).date().isoformat()
+
+        response = self.client.get(f"/api/surveys/{self.survey.id}/results/?from={cutoff}")
+
+        self.assertEqual(response.status_code, 200)
+        ids = [item["external_id"] for item in response.data["results"]]
+        self.assertEqual(ids, ["evt-001"])
+
+    def test_filter_by_to_date_only(self):
+        cutoff = (timezone.now() - timedelta(days=5)).date().isoformat()
+
+        response = self.client.get(f"/api/surveys/{self.survey.id}/results/?to={cutoff}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+
+    def test_filter_by_from_and_to_together(self):
+        Response.objects.create(
+            survey=self.survey,
+            external_id="evt-old",
+            status="complete",
+            answers={},
+            submitted_at=timezone.now() - timedelta(days=30),
+        )
+        date_from = (timezone.now() - timedelta(days=5)).date().isoformat()
+        date_to = timezone.now().date().isoformat()
+
+        response = self.client.get(
+            f"/api/surveys/{self.survey.id}/results/?from={date_from}&to={date_to}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ids = [item["external_id"] for item in response.data["results"]]
+        self.assertEqual(ids, ["evt-001"])
+
+    def test_filter_with_invalid_date_returns_400(self):
+        response = self.client.get(f"/api/surveys/{self.survey.id}/results/?from=not-a-date")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_filter_with_from_after_to_returns_400(self):
+        response = self.client.get(
+            f"/api/surveys/{self.survey.id}/results/?from=2026-09-20&to=2026-09-01"
+        )
+
+        self.assertEqual(response.status_code, 400)
+

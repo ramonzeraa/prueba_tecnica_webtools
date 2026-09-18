@@ -16,3 +16,17 @@ class WebhookSerializer(serializers.Serializer):
     answers = serializers.JSONField()
     submitted_at = serializers.DateTimeField()
 
+
+class DateRangeFilterSerializer(serializers.Serializer):
+    date_from = serializers.DateField(required=False, allow_null=True)
+    date_to = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        date_from = attrs.get("date_from")
+        date_to = attrs.get("date_to")
+        if date_from and date_to and date_from > date_to:
+            raise serializers.ValidationError(
+                {"detail": "'from' no puede ser posterior a 'to'."}
+            )
+        return attrs
+
