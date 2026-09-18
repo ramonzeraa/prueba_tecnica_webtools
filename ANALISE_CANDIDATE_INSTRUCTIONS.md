@@ -55,7 +55,7 @@ curl.exe -u ana:ana123 http://127.0.0.1:8080/api/surveys/2/results/   # survey d
 
 ## 2. Evitar respuestas duplicadas
 
-**Status:** PENDENTE
+**Status:** RESOLVIDO (`backend/surveys/models.py`, `backend/surveys/views.py`, `backend/surveys/migrations/0002_response_unique_survey_response.py`, `backend/surveys/tests.py`)
 
 **Local:** `backend/surveys/views.py` (`ResponseWebhookView.post`), `backend/surveys/models.py` (`Response`)
 
@@ -81,10 +81,18 @@ Cria uma `Response` nova a cada chamada, sem checar se já existe uma com o mesm
 
 **Recomendação:** B + C. Constraint no banco é a única forma de garantir idempotência sob concorrência real (dois requests quase simultâneos); capturar `IntegrityError` e devolver o registro existente com 200 evita erro 500/409 desnecessário pro remetente do webhook, que é o comportamento esperado de um endpoint idempotente.
 
-**Testes a adicionar:**
-- reenvio do mesmo `event_id` não cria segunda `Response`.
-- simular duas escritas "simultâneas" (mesma constraint, `IntegrityError` tratado) sem duplicar.
-- eventos com `external_id` diferentes continuam criando respostas normalmente.
+**Implementação:**
+- `backend/surveys/models.py`: `UniqueConstraint(fields=["survey", "external_id"], name="unique_survey_response")` no `Meta` de `Response`.
+- `backend/surveys/views.py`: `ResponseWebhookView.post` envolve o `Response.objects.create(...)` em `transaction.atomic()`; se estourar `IntegrityError` (constraint violada), busca o registro já existente e devolve `200` em vez de `201`.
+- `backend/surveys/migrations/0002_response_unique_survey_response.py`: aplica a constraint no banco.
+
+**Testes (`backend/surveys/tests.py`):**
+- `test_webhook_is_idempotent_on_duplicate_event` (novo) — mesmo `event_id` enviado 2x: 1ª chamada `201`, 2ª `200` com o mesmo `id`, só 1 `Response` no banco.
+- `test_webhook_creates_separate_response_for_different_event_id` (novo) — `event_id`s diferentes continuam criando normalmente.
+
+5/5 testes passando.
+
+**Verificação manual (servidor local, porta 8080):** mesmo payload (`event_id: manual-001`) enviado via `curl` **3 vezes seguidas** — sempre devolveu o mesmo `id: 4`. Conferido via `GET /api/surveys/1/results/`: `count` subiu de 3 pra 4 (não pra 6), confirmando que as 3 chamadas não duplicaram.
 
 ---
 

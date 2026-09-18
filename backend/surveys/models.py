@@ -53,6 +53,12 @@ class Response(models.Model):
     submitted_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
 
+#añadido unique constraint para evitar duplicados de external_id por survey
     class Meta:
         ordering = ["-submitted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["survey", "external_id"], name="unique_survey_response"
+            )
+        ]
 

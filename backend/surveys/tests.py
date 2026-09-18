@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -60,4 +61,66 @@ class SurveyApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_webhook_is_idempotent_on_duplicate_event(self):
+        payload = {
+            "survey_key": self.survey.external_key,
+            "event_id": "evt-002",
+            "status": "complete",
+            "answers": {"nps": 8},
+            "submitted_at": timezone.now().isoformat(),
+        }
+
+        first = self.client.post(
+            "/api/webhooks/responses/",
+            payload,
+            format="json",
+            headers={"X-Webhook-Token": settings.WEBHOOK_TOKEN},
+        )
+        second = self.client.post(
+            "/api/webhooks/responses/",
+            payload,
+            format="json",
+            headers={"X-Webhook-Token": settings.WEBHOOK_TOKEN},
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(
+            Response.objects.filter(survey=self.survey, external_id="evt-002").count(), 1
+        )
+
+    def test_webhook_creates_separate_response_for_different_event_id(self):
+        headers = {"X-Webhook-Token": settings.WEBHOOK_TOKEN}
+        self.client.post(
+            "/api/webhooks/responses/",
+            {
+                "survey_key": self.survey.external_key,
+                "event_id": "evt-003",
+                "status": "complete",
+                "answers": {"nps": 6},
+                "submitted_at": timezone.now().isoformat(),
+            },
+            format="json",
+            headers=headers,
+        )
+        response = self.client.post(
+            "/api/webhooks/responses/",
+            {
+                "survey_key": self.survey.external_key,
+                "event_id": "evt-004",
+                "status": "complete",
+                "answers": {"nps": 5},
+                "submitted_at": timezone.now().isoformat(),
+            },
+            format="json",
+            headers=headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Response.objects.filter(survey=self.survey, external_id__in=["evt-003", "evt-004"]).count(),
+            2,
+        )
 
