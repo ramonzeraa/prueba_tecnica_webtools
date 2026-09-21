@@ -14,17 +14,16 @@
 
 - **Paginación en `SurveyResultsView`:** se agregó `LimitOffsetPagination` de DRF, activada solo si el cliente manda `?limit=`. Sin ese parámetro el endpoint se comporta exactamente igual que antes (devuelve todo), así que no rompe el frontend actual ni los tests existentes — es una capacidad nueva, no un cambio de contrato. `count` siempre refleja el total de respuestas que matchean los filtros, no el tamaño de la página. Verificado con 2 tests: sin `limit` (todo, sin `next`) y con `limit=1` (1 resultado + `next`).
 
+- **Browsable API de DRF arreglada:** acceder a un endpoint directo desde el navegador devolvía `500 TemplateDoesNotExist` (`TEMPLATES = []` en `settings.py`, pero `BrowsableAPIRenderer` seguía habilitado por defecto). Se agregó `"DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]` en `REST_FRAMEWORK`. Verificado con los 12 tests en verde y navegando directo a la API en el navegador (devuelve JSON limpio, no el error de template).
+
 ## Riesgos conocidos
 
 - **Valores de configuración de demo committeados:** `SECRET_KEY` y `WEBHOOK_TOKEN` (`backend/config/settings.py`), y la contraseña `ana123` (`seed_demo.py`, `tests.py`, `frontend/src/api.js`) están hardcodeados. Son los valores de demo que ya definía el scaffold original de la prueba técnica (documentados en el propio `CANDIDATE_INSTRUCTIONS.md`). No son credenciales reales ni de producción. En un entorno real, `SECRET_KEY` y `WEBHOOK_TOKEN` deberían venir de variables de entorno.
-
-- **`TemplateDoesNotExist` en la Browsable API de DRF:** acceder a cualquier endpoint directo desde el navegador (`Accept: text/html`) devuelve `500`, porque `TEMPLATES = []` en `settings.py` pero el `BrowsableAPIRenderer` sigue habilitado por defecto (no hay `DEFAULT_RENDERER_CLASSES` restringiendo a JSON). Ya estaba así en el scaffold original, no es una regresión de este trabajo. No afecta al frontend real (que pide `Accept: application/json`) ni a los tests — solo rompe si alguien abre la URL de la API directo en el navegador.
 
 - **Test de idempotencia sin concurrencia real:** el test de la Tarea 2 verifica el comportamiento enviando el mismo evento 2 veces de forma secuencial, no con requests simultáneos reales (threads). Ejercita el mismo camino de código (`except IntegrityError`) que una corrida real activaría, pero no es una prueba de concurrencia en sentido estricto — la garantía real viene de la constraint en la base de datos, no del test.
 
 ## Mejoras futuras
 
-- Arreglar la Browsable API agregando `"DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]` en `REST_FRAMEWORK` (`settings.py`).
 - Consumir la paginación desde el frontend (botones "siguiente"/"anterior" usando `next`/`previous`) — hoy la API la soporta pero la UI todavía pide todo de una vez.
 - Selector de survey en el frontend — hoy `surveyId` está fijo en `1` (`App.vue`), no hay forma de elegir otra survey desde la UI.
 - Mover `SECRET_KEY` y `WEBHOOK_TOKEN` a variables de entorno, fuera del código versionado.
