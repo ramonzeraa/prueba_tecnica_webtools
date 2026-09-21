@@ -35,6 +35,38 @@ class SurveyApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
 
+    def test_results_are_not_paginated_by_default(self):
+        Response.objects.create(
+            survey=self.survey,
+            external_id="evt-extra",
+            status="complete",
+            answers={},
+            submitted_at=timezone.now() - timedelta(days=2),
+        )
+
+        response = self.client.get(f"/api/surveys/{self.survey.id}/results/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(len(response.data["results"]), 2)
+        self.assertNotIn("next", response.data)
+
+    def test_results_can_be_paginated_with_limit(self):
+        Response.objects.create(
+            survey=self.survey,
+            external_id="evt-extra",
+            status="complete",
+            answers={},
+            submitted_at=timezone.now() - timedelta(days=2),
+        )
+
+        response = self.client.get(f"/api/surveys/{self.survey.id}/results/?limit=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertIn("next", response.data)
+
     def test_user_cannot_access_survey_from_another_organization(self):
         other_org = Organization.objects.create(name="Contoso")
         other_survey = Survey.objects.create(

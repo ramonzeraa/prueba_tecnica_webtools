@@ -12,23 +12,21 @@
 
 - **Tarea 3 — Filtro de fechas:** se agregó `DateRangeFilterSerializer` (`backend/surveys/serializers.py`) para validar los query params `from`/`to`, siguiendo el mismo patrón que ya usaba `WebhookSerializer`. `SurveyResultsView.get` aplica `submitted_at__date__gte`/`__lte` solo cuando el parámetro correspondiente vino en la petición, para que funcionen juntos o por separado. Fecha con formato inválido o `from` posterior a `to` devuelven `400` con mensaje claro. En el frontend se agregaron 2 inputs `type="date"` (`App.vue`) con la misma validación de `from > to` en el cliente antes de llamar a la API. Verificado con 5 tests automatizados nuevos y manualmente en el navegador.
 
+- **Paginación en `SurveyResultsView`:** se agregó `LimitOffsetPagination` de DRF, activada solo si el cliente manda `?limit=`. Sin ese parámetro el endpoint se comporta exactamente igual que antes (devuelve todo), así que no rompe el frontend actual ni los tests existentes — es una capacidad nueva, no un cambio de contrato. `count` siempre refleja el total de respuestas que matchean los filtros, no el tamaño de la página. Verificado con 2 tests: sin `limit` (todo, sin `next`) y con `limit=1` (1 resultado + `next`).
+
 ## Riesgos conocidos
 
 - **Valores de configuración de demo committeados:** `SECRET_KEY` y `WEBHOOK_TOKEN` (`backend/config/settings.py`), y la contraseña `ana123` (`seed_demo.py`, `tests.py`, `frontend/src/api.js`) están hardcodeados. Son los valores de demo que ya definía el scaffold original de la prueba técnica (documentados en el propio `CANDIDATE_INSTRUCTIONS.md`). No son credenciales reales ni de producción. En un entorno real, `SECRET_KEY` y `WEBHOOK_TOKEN` deberían venir de variables de entorno.
 
 - **`TemplateDoesNotExist` en la Browsable API de DRF:** acceder a cualquier endpoint directo desde el navegador (`Accept: text/html`) devuelve `500`, porque `TEMPLATES = []` en `settings.py` pero el `BrowsableAPIRenderer` sigue habilitado por defecto (no hay `DEFAULT_RENDERER_CLASSES` restringiendo a JSON). Ya estaba así en el scaffold original, no es una regresión de este trabajo. No afecta al frontend real (que pide `Accept: application/json`) ni a los tests — solo rompe si alguien abre la URL de la API directo en el navegador.
 
-- **Comparación del `WEBHOOK_TOKEN` no es constant-time:** `request.headers.get(...) != settings.WEBHOOK_TOKEN` es una comparación de string normal, en teoría vulnerable a timing attack. Riesgo bajo en este contexto (token de demo, entorno local), pero no es la práctica recomendada para un secreto real.
-
 - **Test de idempotencia sin concurrencia real:** el test de la Tarea 2 verifica el comportamiento enviando el mismo evento 2 veces de forma secuencial, no con requests simultáneos reales (threads). Ejercita el mismo camino de código (`except IntegrityError`) que una corrida real activaría, pero no es una prueba de concurrencia en sentido estricto — la garantía real viene de la constraint en la base de datos, no del test.
-
-- **Sin paginación en `SurveyResultsView`:** una survey con muchas respuestas devuelve todo en una sola llamada, incluso con los filtros de fecha aplicados.
 
 ## Mejoras futuras
 
 - Arreglar la Browsable API agregando `"DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]` en `REST_FRAMEWORK` (`settings.py`).
-- Paginación en `SurveyResultsView` (por ejemplo, `LimitOffsetPagination` de DRF).
+- Consumir la paginación desde el frontend (botones "siguiente"/"anterior" usando `next`/`previous`) — hoy la API la soporta pero la UI todavía pide todo de una vez.
 - Selector de survey en el frontend — hoy `surveyId` está fijo en `1` (`App.vue`), no hay forma de elegir otra survey desde la UI.
 - Mover `SECRET_KEY` y `WEBHOOK_TOKEN` a variables de entorno, fuera del código versionado.
-- Comparación constant-time para `WEBHOOK_TOKEN` (`hmac.compare_digest`) o, mejor aún, autenticación del webhook por firma HMAC del payload en vez de un token estático — más robusto ante filtración del token.
+- Autenticación del webhook por firma HMAC del payload en vez de un token estático — más robusto ante filtración del token.
 - Test de concurrencia real (con threads) para la Tarea 2, complementando el test secuencial actual.

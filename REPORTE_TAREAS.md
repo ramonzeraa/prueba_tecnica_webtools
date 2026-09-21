@@ -1,6 +1,6 @@
 # Reporte de tareas — Prueba técnica Webtools
 
-Resumen de las 3 tareas del `CANDIDATE_INSTRUCTIONS.md`: qué problema había, qué se hizo y por qué cada cambio fue necesario. Detalle línea por línea en `AI_NOTES.md`; alternativas evaluadas para cada tarea en `ANALISE_CANDIDATE_INSTRUCTIONS.md`.
+Resumen de las 3 tareas del `CANDIDATE_INSTRUCTIONS.md`: qué problema había, qué se hizo y por qué cada cambio fue necesario. Detalle línea por línea y autoría de cada cambio en `AI_NOTES.md`.
 
 ---
 

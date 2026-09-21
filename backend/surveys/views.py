@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response as ApiResponse
 from rest_framework.views import APIView
 
@@ -12,6 +13,7 @@ from .serializers import DateRangeFilterSerializer, ResponseSerializer, WebhookS
 
 class SurveyResultsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = LimitOffsetPagination
 
     def get(self, request, survey_id):
         survey = get_object_or_404(Survey.objects.for_user(request.user), pk=survey_id)
@@ -32,13 +34,21 @@ class SurveyResultsView(APIView):
         if date_to:
             responses = responses.filter(submitted_at__date__lte=date_to)
 
-        return ApiResponse(
-            {
-                "survey": {"id": survey.id, "title": survey.title},
-                "count": responses.count(),
-                "results": ResponseSerializer(responses, many=True).data,
-            }
-        )
+        total_count = responses.count()
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(responses, request, view=self)
+
+        payload = {
+            "survey": {"id": survey.id, "title": survey.title},
+            "count": total_count,
+            "results": ResponseSerializer(page if page is not None else responses, many=True).data,
+        }
+        if page is not None:
+            payload["next"] = paginator.get_next_link()
+            payload["previous"] = paginator.get_previous_link()
+
+        return ApiResponse(payload)
 
 
 class ResponseWebhookView(APIView):
